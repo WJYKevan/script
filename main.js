@@ -129,14 +129,48 @@ const RED = '\x1b[31m'; // 红色
             //     console.log(`生产批次: ${GREEN}${productionBatch}${RESET}, 客户物料号: ${GREEN}${materialNumber}${RESET}`);
             // });
 
-            const { materialNumber }  = sequenceAndMaterialData[0];
-         
+            const { materialNumber } = sequenceAndMaterialData[0];
 
-             console.log(`物料号: ${materialNumber} 已自动填入输入框。`);
+
+            console.log(`物料号: ${materialNumber} 已自动填入输入框。`);
 
             // 处理完文件后，更改文件名
             // fs.renameSync(originalFilePath, processedFilePath);
             // console.log(`文件处理完成，已重命名为: ${processedFilePath}`);
+
+            // 遍历sequenceAndMaterialData中的每条记录
+            for (const { materialNumber } of sequenceAndMaterialData) {
+                // 确保回到了主frame
+                await page.bringToFront();
+
+                // 再次获取目标iframe
+                const iframes = await page.$$('iframe');
+                let currentTargetFrame = iframes.find(async iframe =>
+                    (await page.evaluate(element => element.src, iframe)).includes('zte-isrm-itemquality-fe')
+                );
+
+                if (currentTargetFrame) {
+                    const frame = await currentTargetFrame.contentFrame();
+
+                    // 在iframe中查找物料代码输入框并填入物料号
+                    await frame.evaluate((materialNumber) => {
+                        const materialCodeInput = document.querySelector('input[type="text"][autocomplete="off"][placeholder="请选择物料代码"]');
+                        if (materialCodeInput) {
+                            materialCodeInput.value = materialNumber;
+                            // 触发input事件
+                            const event = new Event('input', { bubbles: true });
+                            materialCodeInput.dispatchEvent(event);
+                        } else {
+                            console.error('未能找到物料代码输入框');
+                        }
+                    }, materialNumber);
+
+                    console.log(`物料号: ${materialNumber} 已自动填入输入框。`);
+                } else {
+                    console.error('在重新查找时未找到目标iframe');
+                }
+            }
+
 
         } else {
             console.log('没有找到未处理的Excel文件。');

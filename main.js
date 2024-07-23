@@ -131,9 +131,6 @@ const RED = '\x1b[31m'; // 红色
 
             const { materialNumber } = sequenceAndMaterialData[0];
 
-
-            console.log(`物料号: ${materialNumber} 已自动填入输入框。`);
-
             // 处理完文件后，更改文件名
             // fs.renameSync(originalFilePath, processedFilePath);
             // console.log(`文件处理完成，已重命名为: ${processedFilePath}`);
@@ -148,15 +145,26 @@ const RED = '\x1b[31m'; // 红色
                 let currentTargetFrame = iframes.find(async iframe =>
                     (await page.evaluate(element => element.src, iframe)).includes('zte-isrm-itemquality-fe')
                 );
+                console.log("currentTargetFrame", currentTargetFrame);
 
                 if (currentTargetFrame) {
                     const frame = await currentTargetFrame.contentFrame();
 
+                    console.log("frame", frame);
+
+                    await frame.waitForSelector('input[type="text"][autocomplete="off"][placeholder="请选择物料代码"]', {
+                        visible: true,
+                        timeout: 10000 // 设置超时时间为10秒
+                    });
+                    
+
                     // 在iframe中查找物料代码输入框并填入物料号
                     await frame.evaluate((materialNumber) => {
                         const materialCodeInput = document.querySelector('input[type="text"][autocomplete="off"][placeholder="请选择物料代码"]');
+                        console.log("materialCodeInput", materialCodeInput);
                         if (materialCodeInput) {
                             materialCodeInput.value = materialNumber;
+                            console.log("materialCodeInput.value ", materialCodeInput.value);
                             // 触发input事件
                             const event = new Event('input', { bubbles: true });
                             materialCodeInput.dispatchEvent(event);
@@ -166,6 +174,44 @@ const RED = '\x1b[31m'; // 红色
                     }, materialNumber);
 
                     console.log(`物料号: ${materialNumber} 已自动填入输入框。`);
+
+                    // 等待弹窗出现
+                    await frame.waitForFunction(() => document.querySelector('.el-table__row') !== null); // 等待弹窗表格出现
+
+                    const selector = '.el-table__body tr.el-table__row'; // 更改为直接选择表格行
+                    const rows = await frame.$$(selector);
+
+                    for (const row of rows) {
+                        // 获取列标题
+                        const columnHeaders = await frame.$$('.el-table-column__header div.el-table_10000_column_2');
+                        const materialHeader = columnHeaders.find(header => header.innerText.trim() === '物料代码' || header.innerText.trim() === '物料号');
+
+                        if (materialHeader) {
+                            // 使用 header 的位置来获取正确的单元格
+                            const materialNumberCell = await frame.$(`.el-table__body td:nth-child(${columnHeaders.indexOf(materialHeader) + 1})`, row);
+                            if (materialNumberCell) {
+                                const materialNumberCellText = await frame.evaluate(cell => cell.innerText.trim(), materialNumberCell);
+                                if (materialNumberCellText === materialNumber) {
+                                    // 找到了匹配的行，现在找到该行中的单选按钮
+                                    const radioButtons = await frame.$$('.el-radio', row);
+                                    if (radioButtons.length > 0) {
+                                        await frame.evaluate(radioButton => radioButton.click(), radioButtons[0]);
+                                        console.log(`选择了物料号: ${materialNumber} 的选项。`);
+                                    } else {
+                                        console.error('在匹配的行中未找到单选按钮。');
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // 点击确认按钮
+                    // await frame.click('.el-dialog__footer .el-button--primary'); // 确认按钮的类名需要根据实际情况修改
+
+
+
+
                 } else {
                     console.error('在重新查找时未找到目标iframe');
                 }
@@ -185,3 +231,5 @@ const RED = '\x1b[31m'; // 红色
         console.error('执行过程中发生错误:', error);
     }
 })();
+
+
